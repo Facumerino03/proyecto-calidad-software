@@ -1,0 +1,427 @@
+openapi: 3.1.0
+
+info:
+  title: Gestión de Trámites de Servicio
+  version: 2.0.0
+  description: |
+    API RESTful para gestionar solicitudes de **alta y baja de un servicio**.
+
+    ## Actores
+    - `Cliente` – Anónimo; crea trámites y consulta su estado con el ID de seguimiento.
+    - `Administrador` – Autenticado (Bearer JWT); gestiona y resuelve trámites.
+  contact:
+    name: Proyecto Calidad Software
+  license:
+    name: MIT
+
+servers:
+  - url: https://api.tramites-servicio.com/v1
+    description: Producción
+  - url: http://localhost:8000/v1
+    description: Desarrollo local
+
+tags:
+  - name: Tokens
+    description: Obtención de token de acceso (autenticación)
+  - name: Trámites
+    description: Recurso principal — colección y documentos de trámites
+  - name: Archivos
+    description: Almacén de archivos adjuntos
+
+paths:
+
+
+  # ── LOGIN ADMINISTRADOR ───────────────────────
+  /admin/login:
+    post:
+      tags: [Tokens]
+      summary: Login de administrador
+      operationId: loginAdministrador
+      description: |
+        Autentica a un administrador mediante usuario y clave.
+        Si las credenciales son válidas, devuelve un token JWT para acceder
+        a los endpoints protegidos de administración.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              default:
+                value:
+                  usuario: "admin01"
+                  clave: "Secreta123!"
+      responses:
+        '200':
+          description: Login exitoso. Devuelve un token JWT para el administrador.
+          content:
+            application/json:
+              examples:
+                default:
+                  value:
+                    token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    tipo: "Bearer"
+                    expira-en: 3600
+        '401':
+          description: Usuario o clave incorrectos.
+        '422':
+          description: Los datos enviados no cumplen las validaciones definidas.
+  
+  # ── TRAMITES (colección) ───────────────────────
+  # Arquetipo COLECCIÓN: /tramites
+  # GET  → lista (admin, con filtros por query params)
+  # POST → crea un nuevo trámite (cliente anónimo)
+  /tramites:
+    get:
+      tags: [Trámites]
+      summary: Listar trámites
+      operationId: listarTramites
+      description: |
+        Devuelve la lista paginada de trámites.
+        Solo disponible para administradores autenticados.
+
+        Filtros disponibles via **query params** (no en el body):
+        `?estado=PENDIENTE&tipo=ALTA&orden=desc&page=1&limit=20`
+      parameters:
+        - name: estado
+          in: query
+          description: Filtrar por estado del trámite
+          required: false
+          schema:
+            type: string
+            enum: [PENDIENTE, APROBADO, RECHAZADO]
+        - name: tipo
+          in: query
+          description: Filtrar por tipo de trámite
+          required: false
+          schema:
+            type: string
+            enum: [ALTA, BAJA]
+        - name: orden
+          in: query
+          description: Ordenar por fecha de creación
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Lista de trámites.
+          content:
+            application/json: {}
+        '401':
+          description: Token JWT ausente o inválido.
+
+    post:
+      tags: [Trámites]
+      summary: Crear un nuevo trámite — alta o baja
+      operationId: crearTramite
+      description: |
+        Crea un nuevo trámite en la colección `/tramites`.
+        No requiere autenticación.
+
+         El campo `tipo` determina si es una solicitud de **ALTA** o **BAJA**.
+
+         Ambos tipos requieren dos archivos adjuntos (subidos previamente
+         mediante `POST /archivos`):
+        - `ALTA`: requiere `archivo_id_1` y `archivo_id_2`.
+        - `BAJA`: requiere `archivo_id_1` y `archivo_id_2`.
+
+        El sistema asigna automáticamente:
+        - Un ID de seguimiento único (`TRK-2026-XXXX`).
+        - Estado inicial `PENDIENTE`.
+        - Envío del ID al mail del solicitante.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              solicitud-alta:
+                summary: Solicitud de ALTA
+                value:
+                  tipo: "ALTA"
+                  nombre: "Juan"
+                  apellido: "Pérez"
+                  dni: "35712345"
+                  mail: "juan.perez@email.com"
+                  telefono: "2615001234"
+                  direccion: "Av. Libertad 1200, San Rafael"
+                  archivo_id_1: "arch-abc123"
+                  archivo_id_2: "arch-def456"
+              solicitud-baja:
+                summary: Solicitud de BAJA
+                value:
+                  tipo: "BAJA"
+                  nombre: "María"
+                  apellido: "González"
+                  dni: "28904321"
+                  mail: "maria.gonzalez@email.com"
+                  telefono: "2604998877"
+                  direccion: "Calle Italia 450, San Rafael"
+                  archivo_id_1: "arch-abc123"
+                  archivo_id_2: "arch-def456"
+      responses:
+        '201':
+          description: Trámite creado. El servidor asigna el ID de seguimiento.
+          content:
+            application/json:
+              examples:
+                alta-creada:
+                  summary: Trámite de ALTA creado
+                  value:
+                    id: "TRK-2026-0047"
+                    tipo: "ALTA"
+                    estado: "PENDIENTE"
+                    mensaje: "Su trámite fue registrado. Recibirá un mail con su ID de seguimiento."
+                baja-creada:
+                  summary: Trámite de BAJA creado
+                  value:
+                    id: "TRK-2026-0048"
+                    tipo: "BAJA"
+                    estado: "PENDIENTE"
+                    mensaje: "Su trámite fue registrado. Recibirá un mail con su ID de seguimiento."
+        '422':
+          description: Los datos enviados no cumplen las validaciones definidas.
+
+  # ── TRAMITE (documento) ────────────────────────
+  # Arquetipo DOCUMENTO: /tramites/{id}
+  # GET   → representación del recurso
+  #         - Sin auth: vista pública (estado, tipo, fecha)
+  #         - Con auth admin: vista completa (todos los campos)
+  # PATCH → actualización parcial del estado por el administrador
+  /tramites/{id}:
+    get:
+      tags: [Trámites]
+      summary: Obtener un trámite por ID
+      operationId: obtenerTramite
+      description: |
+        Devuelve la representación del trámite identificado por `{id}`.
+
+        La respuesta varía según el nivel de acceso:
+        - **Sin token (cliente anónimo):** vista pública — estado, tipo, fecha y
+          motivo de rechazo (si aplica). No expone datos personales completos.
+        - **Con token de administrador:** vista completa — todos los campos del
+          trámite incluyendo datos del solicitante, archivo adjunto e historial.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID único de seguimiento del trámite.
+          schema:
+            type: string
+          examples:
+            default:
+              value: "TRK-2026-0047"
+      responses:
+        '200':
+          description: Representación del trámite.
+          content:
+            application/json:
+              examples:
+                vista-publica-pendiente:
+                  summary: Vista pública — trámite pendiente
+                  value:
+                    id: "TRK-2026-0047"
+                    tipo: "ALTA"
+                    estado: "PENDIENTE"
+                    fecha-creacion: "2026-04-30T18:00:00Z"
+                    detalle-estado: "En revisión por el administrador"
+                    motivo-rechazo: null
+                vista-publica-rechazado:
+                  summary: Vista pública — trámite rechazado
+                  value:
+                    id: "TRK-2026-0049"
+                    tipo: "BAJA"
+                    estado: "RECHAZADO"
+                    fecha-creacion: "2026-04-29T10:00:00Z"
+                    detalle-estado: "Trámite rechazado"
+                    motivo-rechazo: "La documentación adjunta está ilegible."
+                vista-admin-completa:
+                  summary: Vista administrador — completa
+                  value:
+                    id: "TRK-2026-0047"
+                    tipo: "ALTA"
+                    estado: "PENDIENTE"
+                    nombre: "Juan"
+                    apellido: "Pérez"
+                    dni: "35712345"
+                    mail: "juan.perez@email.com"
+                    telefono: "2615001234"
+                    direccion: "Av. Libertad 1200, San Rafael"
+                    fecha-creacion: "2026-04-30T18:00:00Z"
+                    fecha-resolucion: null
+                    motivo-rechazo: null
+                    nota-interna: null
+                    resuelto-por: null
+                    archivos:
+                      - id: "arch-abc123"
+                        nombre: "documento-identidad.pdf"
+                        url: "https://storage.tramites.com/archivos/arch-abc123.pdf"
+                      - id: "arch-def456"
+                        nombre: "comprobante-domicilio.pdf"
+                        url: "https://storage.tramites.com/archivos/arch-def456.pdf"
+        '404':
+          description: El recurso no existe.
+
+    patch:
+      tags: [Trámites]
+      summary: Actualizar estado de un trámite
+      operationId: actualizarEstadoTramite
+      description: |
+        Actualiza **parcialmente** el recurso trámite, cambiando su estado.
+        Solo disponible para administradores autenticados.
+
+        Transiciones de estado posibles:
+
+        | `estado` en body | Campo adicional requerido |
+        |------------------|---------------------------|
+        | `APROBADO`       |  —                        |
+        | `RECHAZADO`      | `motivo-rechazo` (obligatorio) |
+        | `PENDIENTE`      |`nota-interna` (opcional) |
+
+        Envía una notificación al mail del solicitante tras cada cambio de estado.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID único de seguimiento del trámite.
+          schema:
+            type: string
+          examples:
+            default:
+              value: "TRK-2026-0047"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              aprobar:
+                summary: Aprobar trámite
+                value:
+                  estado: "APROBADO"
+              rechazar:
+                summary: Rechazar trámite
+                value:
+                  estado: "RECHAZADO"
+                  motivo-rechazo: "La documentación adjunta está ilegible. Por favor reenvíe la factura."
+              revertir-a-pendiente:
+                summary: Revertir a pendiente
+                value:
+                  estado: "PENDIENTE"
+                  nota-interna: "Se revierte para nueva revisión."
+      responses:
+        '200':
+          description: Estado del trámite actualizado correctamente.
+          content:
+            application/json:
+              examples:
+                aprobado:
+                  value:
+                    id: "TRK-2026-0047"
+                    tipo: "ALTA"
+                    estado: "APROBADO"
+                    nombre: "Juan"
+                    apellido: "Pérez"
+                    dni: "35712345"
+                    mail: "juan.perez@email.com"
+                    telefono: "2615001234"
+                    direccion: "Av. Libertad 1200, San Rafael"
+                    fecha-creacion: "2026-04-30T18:00:00Z"
+                    fecha-resolucion: "2026-04-30T20:30:00Z"
+                    motivo-rechazo: null
+                    nota-interna: null
+                    resuelto-por: "admin01"
+                    archivos:
+                      - id: "arch-abc123"
+                        nombre: "documento-identidad.pdf"
+                        url: "https://storage.tramites.com/archivos/arch-abc123.pdf"
+                      - id: "arch-def456"
+                        nombre: "comprobante-domicilio.pdf"
+                        url: "https://storage.tramites.com/archivos/arch-def456.pdf"
+        '400':
+          description: |
+            Transición de estado inválida o campo requerido ausente
+            (ej.: falta `motivo-rechazo` al rechazar).
+          content:
+            application/json: {}
+        '401':
+          description: Token JWT ausente o inválido.
+        '404':
+          description: El recurso no existe.
+        '409':
+          description: Transición de estado no permitida.
+        '422':
+          description: Los datos enviados no cumplen las validaciones definidas.
+
+  # ── ARCHIVOS (almacén) ─────────────────────────
+  # Arquetipo ALMACÉN: /archivos
+  # El cliente administra sus propios archivos.
+  # POST → sube un archivo, retorna el ID para usarlo en POST /tramites
+  /archivos:
+    post:
+      tags: [Archivos]
+      summary: Subir un archivo adjunto
+      operationId: subirArchivo
+      description: |
+        Sube un archivo al almacén. Retorna el `id` que debe incluirse
+        como `archivo_id_1` o `archivo_id_2` al crear un trámite de ALTA o BAJA.
+
+        Restricciones:
+        - Formatos: `image/jpeg`, `image/png`, `application/pdf`
+        - Tamaño máximo: 10 MB
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [archivo]
+              properties:
+                archivo:
+                  type: string
+                  format: binary
+                  description: Archivo adjunto (PDF o imagen)
+            encoding:
+              archivo:
+                contentType: image/jpeg, image/png, application/pdf
+      responses:
+        '201':
+          description: Archivo subido correctamente.
+          content:
+            application/json:
+              examples:
+                default:
+                  value:
+                    id: "arch-abc123"
+                    nombre-archivo: "factura-marzo.pdf"
+                    tipo-mime: "application/pdf"
+                    tamano-bytes: 204800
+                    url: "https://storage.tramites.com/archivos/arch-abc123.pdf"
+                    fecha-subida: "2026-04-30T17:55:00Z"
+        '413':
+          description: Archivo demasiado grande (máx. 10 MB).
+          content:
+            application/json: {}
+        '415':
+          description: Tipo de archivo no permitido.
+          content:
+            application/json: {}
+        '422':
+          description: Los datos enviados no cumplen las validaciones definidas.
+
+

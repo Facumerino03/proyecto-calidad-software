@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv/
+venv/
+# uv crea el venv en .venv por defecto
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+uploads/
+tramites.db
+*.db
+.venv/
