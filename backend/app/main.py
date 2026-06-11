@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.routes import archivos, auth, tramites
 
+# CI test - verificar workflow de tests
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
