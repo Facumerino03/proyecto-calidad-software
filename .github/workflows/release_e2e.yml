@@ -1,0 +1,43 @@
+name: CI/CD Frontend E2E (Katalon)
+
+env:
+  REPO_NAME: ${{ github.event.repository.name }}
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  deploy-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub Action
+        uses: actions/checkout@v4
+
+      - name: Build frontend
+        run: echo "Building frontend for release ${{ github.event.release.tag_name || github.ref_name }}..."
+
+      - name: Deploy to staging
+        run: echo "Deploying to staging environment..."
+
+      - name: Deploy to production
+        run: echo "Deploying to production environment..."
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Install xvfb
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Install test dependencies
+        run: pip install selenium webdriver-manager
+
+      - name: Run Katalon E2E tests
+        working-directory: e2e
+        run: xvfb-run --auto-servernum python test_busqueda.py
